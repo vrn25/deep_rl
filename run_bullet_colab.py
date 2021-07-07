@@ -147,7 +147,7 @@ def main():
     # Create a SummaryWriter object by TensorBoard
     if args.tensorboard:# and args.load == '':
         dir_name = 'runs/' + args.env + '/' \
-                           + args.algo + '_' + str(args.run_index) \
+                           + args.algo + '/' + str(args.run_index) \
                            + '_seed_' + str(args.seed)
                            #+ '_t_' + datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
         writer = SummaryWriter(log_dir=dir_name)
@@ -236,7 +236,7 @@ def main():
                 if not os.path.exists(save_path):
                     os.mkdir(save_path)
                 
-                ckpt_path = os.path.join(save_path + args.algo + '_' + str(args.run_index) \
+                ckpt_path = os.path.join(save_path + args.algo + '/' + str(args.run_index) \
                                                                     + '_s_' + str(args.seed) \
                                                                     + '_i_' + str(i + 1) \
                                                                     + '_tr_' + str(round(train_episode_return, 2)) \
