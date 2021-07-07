@@ -149,7 +149,7 @@ def main():
     # Create a SummaryWriter object by TensorBoard
     if args.tensorboard:# and args.load == '':
         dir_name = 'runs/' + args.env + '/' \
-                           + args.algo + '/' + str(args.run_index) \
+                           + args.algo + '/run_' + str(args.run_index) \
                            + '_seed_' + str(args.seed)
                            #+ '_t_' + datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
         writer = SummaryWriter(log_dir=dir_name)
@@ -186,11 +186,11 @@ def main():
                 total_num_steps += train_step_length
                 train_step_count += train_step_length
                 train_sum_returns += train_episode_return
-                train_each_episode_return_list.append(train_episode_return)
+                train_each_episode_return_list.append([train_episode_return, total_num_steps])
                 train_num_episodes += 1
 
                 train_average_return = train_sum_returns / train_num_episodes if train_num_episodes > 0 else 0.0
-                train_average_return_list.append(train_average_return)
+                train_average_return_list.append([train_average_return, total_num_steps])
 
                 # Log experiment result for training steps
                 if args.tensorboard:# and args.load is None:
@@ -222,7 +222,7 @@ def main():
             writer.add_scalar('Eval/AverageReturns', eval_average_return, total_num_steps)
             writer.add_scalar('Eval/AverageReturnsPerIteration', eval_average_return, i)
             #writer.add_scalar('Eval/EpisodeReturns', eval_episode_return, total_num_steps)
-        eval_average_returns_per_itr_list.append(eval_average_return)
+        eval_average_returns_per_itr_list.append([eval_average_return, total_num_steps])
 
         if args.phase == 'train':
             print('---------------------------------------')
@@ -241,11 +241,11 @@ def main():
             # Save the trained model
             if (i + 1) % args.save_freq == 0 or i==0 or i==args.iterations-1:
                 save_path = args.drive_location + '/' + args.env + '/' + args.algo + '/'
-                np_file = save_path + args.env + '_' + args.algo + '_' + 'np_arrays_' + str(args.run_index) + '_s_' + str(args.seed) + '.npz'
+                np_file = save_path + args.env + '_' + args.algo + '_' + 'np_arrays_run_' + str(args.run_index) + '_s_' + str(args.seed) + '.npz'
                 if not os.path.exists(save_path):
                     os.mkdir(save_path)
                 
-                ckpt_path = os.path.join(save_path + args.env + '_' + args.algo + '_' + 'policy_' + str(args.run_index) \
+                ckpt_path = os.path.join(save_path + args.env + '_' + args.algo + '_' + 'policy_run_' + str(args.run_index) \
                                                                     + '_seed_' + str(args.seed) \
                                                                     + '_itr_' + str(i + 1) \
                                                                     + '_ear_' + str(round(eval_average_return, 2)) + '.pt')
