@@ -231,12 +231,12 @@ def main():
 
             # Save the trained model
             if (i + 1) % 2 == 0:
-                save_path = args.drive_location + '/' + args.env + '/'
-                np_file = save_path + 'np_arrays_' + args.algo + '_' + str(args.run_index) + '_s_' + str(args.seed) + '.npz'
+                save_path = args.drive_location + '/' + args.env + '/' args.algo + '/'
+                np_file = save_path + 'np_arrays_' + str(args.run_index) + '_s_' + str(args.seed) + '.npz'
                 if not os.path.exists(save_path):
                     os.mkdir(save_path)
                 
-                ckpt_path = os.path.join(save_path + args.algo + '/' + str(args.run_index) \
+                ckpt_path = os.path.join(save_path + 'policy_' + str(args.run_index) \
                                                                     + '_s_' + str(args.seed) \
                                                                     + '_i_' + str(i + 1) \
                                                                     + '_tr_' + str(round(train_episode_return, 2)) \
