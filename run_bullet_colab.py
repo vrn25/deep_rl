@@ -33,6 +33,7 @@ parser.add_argument('--tensorboard', action='store_true', default=False)
 parser.add_argument('--gpu_index', type=int, default=0)
 parser.add_argument('--run_index', type=int, default=0)
 parser.add_argument('--drive_location', type=str, default='')
+parser.add_argument('--save_freq', type=int, default=500)
 
 args = parser.parse_args()
 if args.gpu_index>=0 and not torch.cuda.is_available():
@@ -230,7 +231,7 @@ def main():
             print('---------------------------------------')
 
             # Save the trained model
-            if (i + 1) % 2 == 0:
+            if (i + 1) % args.save_freq == 0:
                 save_path = args.drive_location + '/' + args.env + '/' + args.algo + '/'
                 np_file = save_path + 'np_arrays_' + str(args.run_index) + '_s_' + str(args.seed) + '.npz'
                 if not os.path.exists(save_path):
