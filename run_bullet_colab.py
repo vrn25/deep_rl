@@ -34,6 +34,7 @@ parser.add_argument('--gpu_index', type=int, default=0)
 parser.add_argument('--run_index', type=int, default=0)
 parser.add_argument('--drive_location', type=str, default='')
 parser.add_argument('--save_freq', type=int, default=500)
+parser.add_argument('--eval_episodes', type=int, default=10)
 
 args = parser.parse_args()
 if args.gpu_index>=0 and not torch.cuda.is_available():
@@ -160,7 +161,11 @@ def main():
     # total sum of rewards till now
     train_sum_returns = 0.
     train_num_episodes = 0
-    train_avg_rews = []
+    
+    train_average_return_list = []
+    train_each_episode_return_list = []
+    eval_average_returns_per_itr_list = []
+
     if args.phase == 'test':
         images = []
 
@@ -181,17 +186,18 @@ def main():
                 total_num_steps += train_step_length
                 train_step_count += train_step_length
                 train_sum_returns += train_episode_return
+                train_each_episode_return_list.append(train_episode_return)
                 train_num_episodes += 1
 
                 train_average_return = train_sum_returns / train_num_episodes if train_num_episodes > 0 else 0.0
-                train_avg_rews.append(train_average_return)
+                train_average_return_list.append(train_average_return)
 
                 # Log experiment result for training steps
                 if args.tensorboard:# and args.load is None:
                     # (total sum of rewards till now)/number of episodes: per episode return
-                    writer.add_scalar('Train/AverageReturns', train_average_return, total_num_steps)
+                    writer.add_scalar('Train/AverageReturns (sum_rews_till_now/num_eps_till_now)', train_average_return, total_num_steps)
                     # total sum of rewards in this episode
-                    writer.add_scalar('Train/EpisodeReturns', train_episode_return, total_num_steps)
+                    writer.add_scalar('Train/EachEpisodeReturns', train_episode_return, total_num_steps)
                     if args.algo == 'asac' or args.algo == 'atac':
                         writer.add_scalar('Train/Alpha', agent.alpha, total_num_steps)
 
@@ -200,7 +206,7 @@ def main():
         eval_num_episodes = 0
         agent.eval_mode = True
 
-        for _ in range(10):
+        for _ in range(args.eval_episodes):
             # Run one episode
             eval_step_length, eval_episode_return, imgs = agent.run(args.max_step)
 
@@ -214,7 +220,9 @@ def main():
         # Log experiment result for evaluation steps
         if args.tensorboard:# and args.load is None:
             writer.add_scalar('Eval/AverageReturns', eval_average_return, total_num_steps)
-            writer.add_scalar('Eval/EpisodeReturns', eval_episode_return, total_num_steps)
+            writer.add_scalar('Eval/AverageReturnsPerIteration', eval_average_return, i)
+            #writer.add_scalar('Eval/EpisodeReturns', eval_episode_return, total_num_steps)
+        eval_average_returns_per_itr_list.append(eval_average_return)
 
         if args.phase == 'train':
             print('---------------------------------------')
@@ -222,30 +230,32 @@ def main():
             print('Steps (interactions with env till now):', total_num_steps)
             print('Episodes (till now):', train_num_episodes)
             print('EpisodeReturn (return in the latest eps):', round(train_episode_return, 2))
-            print('AverageReturn (total return till now/num_eps):', round(train_average_return, 2))
+            print('AverageReturn (total reward till now/num_eps):', round(train_average_return, 2))
             print('EvalEpisodes:', eval_num_episodes)
-            print('EvalEpisodeReturn:', round(eval_episode_return, 2))
-            print('EvalAverageReturn:', round(eval_average_return, 2))
+            #print('EvalEpisodeReturn:', round(eval_episode_return, 2))
+            print('EvalAverageReturn (EAR):', round(eval_average_return, 2))
             print('OtherLogs:', agent.logger)
             print('Time:', int(time.time() - start_time))
             print('---------------------------------------')
 
             # Save the trained model
-            if (i + 1) % args.save_freq == 0:
+            if (i + 1) % args.save_freq == 0 or i==0 or i==args.iterations-1:
                 save_path = args.drive_location + '/' + args.env + '/' + args.algo + '/'
-                np_file = save_path + 'np_arrays_' + str(args.run_index) + '_s_' + str(args.seed) + '.npz'
+                np_file = save_path + args.env + '_' + args.algo + '_' + 'np_arrays_' + str(args.run_index) + '_s_' + str(args.seed) + '.npz'
                 if not os.path.exists(save_path):
                     os.mkdir(save_path)
                 
-                ckpt_path = os.path.join(save_path + 'policy_' + str(args.run_index) \
-                                                                    + '_s_' + str(args.seed) \
-                                                                    + '_i_' + str(i + 1) \
-                                                                    + '_tr_' + str(round(train_episode_return, 2)) \
-                                                                    + '_er_' + str(round(eval_episode_return, 2)) + '.pt')
+                ckpt_path = os.path.join(save_path + args.env + '_' + args.algo + '_' + 'policy_' + str(args.run_index) \
+                                                                    + '_seed_' + str(args.seed) \
+                                                                    + '_itr_' + str(i + 1) \
+                                                                    + '_ear_' + str(round(eval_average_return, 2)) + '.pt')
                 
                 torch.save(agent.policy.state_dict(), ckpt_path)
                 with open(np_file, 'wb') as np_f:
-                    np.savez(np_f, train_avg_rews = np.array(train_avg_rews))
+                    np.savez(np_f, eval_average_returns_per_itr_list=np.array(eval_average_returns_per_itr_list), \
+                    train_average_return_list=np.array(train_average_return_list), \
+                    train_each_episode_return_list=np.array(train_each_episode_return_list), \
+                    train_num_episodes=np.array(train_num_episodes))
         elif args.phase == 'test':
             print('---------------------------------------')
             print('EvalEpisodes:', eval_num_episodes)
