@@ -234,6 +234,7 @@ class Agent(object):
    def run(self, max_step):
       step_number = 0
       total_reward = 0.
+      images = []
 
       obs = self.env.reset()
       done = False
@@ -241,7 +242,7 @@ class Agent(object):
       # Keep interacting until agent reaches a terminal state.
       while not (done or step_number == max_step):
          if self.args.render:
-            self.env.render()    
+            images.append(self.env.render('rgb_array'))
          
          if self.eval_mode:
             action, _, _, _ = self.policy(torch.Tensor(obs).to(self.device))
@@ -275,4 +276,4 @@ class Agent(object):
       self.logger['KL'] = round(np.mean(self.kls), 5)
       if self.args.algo == 'trpo':
          self.logger['BacktrackIters'] = np.mean(self.backtrack_iters)
-      return step_number, total_reward
+      return step_number, total_reward, images

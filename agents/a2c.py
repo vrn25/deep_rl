@@ -98,6 +98,7 @@ class Agent(object):
    def run(self, max_step):
       step_number = 0
       total_reward = 0.
+      images = []
 
       obs = self.env.reset()
       done = False
@@ -105,7 +106,7 @@ class Agent(object):
       # Keep interacting until agent reaches a terminal state.
       while not (done or step_number == max_step):
          if self.args.render:
-            self.env.render()
+            images.append(self.env.render('rgb_array'))
 
          if self.eval_mode:
             _, pi, _ = self.policy(torch.Tensor(obs).to(self.device))
@@ -133,4 +134,4 @@ class Agent(object):
       # Save total average losses
       self.logger['LossPi'] = round(np.mean(self.policy_losses), 5)
       self.logger['LossV'] = round(np.mean(self.vf_losses), 5)
-      return step_number, total_reward
+      return step_number, total_reward, images

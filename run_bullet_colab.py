@@ -7,6 +7,7 @@ import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import pybullet_envs as pe
+import imageio
 
 # Configurations
 parser = argparse.ArgumentParser(description='RL algorithms with PyTorch in Bullet environments')
@@ -30,7 +31,12 @@ parser.add_argument('--max_step', type=int, default=1000,
                     help='max episode step')
 parser.add_argument('--tensorboard', action='store_true', default=False)
 parser.add_argument('--gpu_index', type=int, default=0)
+parser.add_argument('--run_index', type=int, default=0)
+parser.add_argument('--drive_location', type=str, default='')
+
 args = parser.parse_args()
+if args.gpu_index>=0 and not torch.cuda.is_available():
+    raise Exception('GPU not available!')
 device = torch.device('cuda', index=args.gpu_index) if torch.cuda.is_available() else torch.device('cpu')
 
 if args.algo == 'vpg':
@@ -61,14 +67,17 @@ def main():
     env = gym.make(args.env)
     obs_dim = env.observation_space.shape[0]
     act_dim = env.action_space.shape[0]
-    act_limit = env.action_space.high[0]
+    obs_limits = [env.observation_space.low[0], env.observation_space.high[0]]
+    act_limits = [env.action_space.low[0], env.action_space.high[0]]
+    act_limit = act_limits[1]
 
     print('---------------------------------------')
     print('Environment:', args.env)
     print('Algorithm:', args.algo)
     print('State dimension:', obs_dim)
     print('Action dimension:', act_dim)
-    print('Action limit:', act_limit)
+    print('State limit:', obs_limits)
+    print('Action limit:', act_limits)
     print('---------------------------------------')
 
     # Set a random seed
@@ -136,22 +145,28 @@ def main():
         agent.policy.load_state_dict(pretrained_model)
 
     # Create a SummaryWriter object by TensorBoard
-    if args.tensorboard and args.load is None:
+    if args.tensorboard:# and args.load == '':
         dir_name = 'runs/' + args.env + '/' \
-                           + args.algo \
-                           + '_s_' + str(args.seed) \
-                           + '_t_' + datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+                           + args.algo + '_' + str(args.run_index) \
+                           + '_seed_' + str(args.seed)
+                           #+ '_t_' + datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
         writer = SummaryWriter(log_dir=dir_name)
 
     start_time = time.time()
 
+    # total number of interactions with env till now
     total_num_steps = 0
+    # total sum of rewards till now
     train_sum_returns = 0.
     train_num_episodes = 0
+    train_avg_rews = []
+    if args.phase == 'test':
+        images = []
 
     # Main loop
     for i in range(args.iterations):
         # Perform the training phase, during which the agent learns
+        # one iteration corresponds to approximately "args.steps_per_itr" number of interactions with the env
         if args.phase == 'train':
             train_step_count = 0
 
@@ -159,7 +174,8 @@ def main():
                 agent.eval_mode = False
                 
                 # Run one episode
-                train_step_length, train_episode_return = agent.run(args.max_step)
+                # train_step_length is the number of steps in the episode
+                train_step_length, train_episode_return, _ = agent.run(args.max_step)
                 
                 total_num_steps += train_step_length
                 train_step_count += train_step_length
@@ -167,10 +183,13 @@ def main():
                 train_num_episodes += 1
 
                 train_average_return = train_sum_returns / train_num_episodes if train_num_episodes > 0 else 0.0
+                train_avg_rews.append(train_average_return)
 
                 # Log experiment result for training steps
-                if args.tensorboard and args.load is None:
+                if args.tensorboard:# and args.load is None:
+                    # (total sum of rewards till now)/number of episodes: per episode return
                     writer.add_scalar('Train/AverageReturns', train_average_return, total_num_steps)
+                    # total sum of rewards in this episode
                     writer.add_scalar('Train/EpisodeReturns', train_episode_return, total_num_steps)
                     if args.algo == 'asac' or args.algo == 'atac':
                         writer.add_scalar('Train/Alpha', agent.alpha, total_num_steps)
@@ -182,25 +201,27 @@ def main():
 
         for _ in range(10):
             # Run one episode
-            eval_step_length, eval_episode_return = agent.run(args.max_step)
+            eval_step_length, eval_episode_return, imgs = agent.run(args.max_step)
 
             eval_sum_returns += eval_episode_return
             eval_num_episodes += 1
+            if args.phase == 'test':
+                images += imgs
 
         eval_average_return = eval_sum_returns / eval_num_episodes if eval_num_episodes > 0 else 0.0
 
         # Log experiment result for evaluation steps
-        if args.tensorboard and args.load is None:
+        if args.tensorboard:# and args.load is None:
             writer.add_scalar('Eval/AverageReturns', eval_average_return, total_num_steps)
             writer.add_scalar('Eval/EpisodeReturns', eval_episode_return, total_num_steps)
 
         if args.phase == 'train':
             print('---------------------------------------')
             print('Iterations:', i + 1)
-            print('Steps:', total_num_steps)
-            print('Episodes:', train_num_episodes)
-            print('EpisodeReturn:', round(train_episode_return, 2))
-            print('AverageReturn:', round(train_average_return, 2))
+            print('Steps (interactions with env till now):', total_num_steps)
+            print('Episodes (till now):', train_num_episodes)
+            print('EpisodeReturn (return in the latest eps):', round(train_episode_return, 2))
+            print('AverageReturn (total return till now/num_eps):', round(train_average_return, 2))
             print('EvalEpisodes:', eval_num_episodes)
             print('EvalEpisodeReturn:', round(eval_episode_return, 2))
             print('EvalAverageReturn:', round(eval_average_return, 2))
@@ -209,17 +230,21 @@ def main():
             print('---------------------------------------')
 
             # Save the trained model
-            if (i + 1) >= 5 and (i + 1) % 2 == 0:
-                if not os.path.exists('./save_model'):
-                    os.mkdir('./save_model')
+            if (i + 1) % 2 == 0:
+                save_path = args.drive_location + '/' + args.env + '/'
+                np_file = save_path + 'np_arrays_' + args.algo + '_' + str(args.run_index) + '_s_' + str(args.seed) + '.npz'
+                if not os.path.exists(save_path):
+                    os.mkdir(save_path)
                 
-                ckpt_path = os.path.join('./save_model/' + args.env + '_' + args.algo \
+                ckpt_path = os.path.join(save_path + args.algo + '_' + str(args.run_index) \
                                                                     + '_s_' + str(args.seed) \
                                                                     + '_i_' + str(i + 1) \
                                                                     + '_tr_' + str(round(train_episode_return, 2)) \
                                                                     + '_er_' + str(round(eval_episode_return, 2)) + '.pt')
                 
                 torch.save(agent.policy.state_dict(), ckpt_path)
+                with open(np_file, 'wb') as np_f:
+                    np.savez(np_f, train_avg_rews = np.array(train_avg_rews))
         elif args.phase == 'test':
             print('---------------------------------------')
             print('EvalEpisodes:', eval_num_episodes)
@@ -227,6 +252,9 @@ def main():
             print('EvalAverageReturn:', round(eval_average_return, 2))
             print('Time:', int(time.time() - start_time))
             print('---------------------------------------')
+
+    if args.phase == 'test':
+        imageio.mimsave('video.mp4', [np.array(img) for i, img in enumerate(images)], fps=40)
             
 if __name__ == "__main__":
     main()
