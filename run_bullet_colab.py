@@ -265,7 +265,7 @@ def main():
             print('---------------------------------------')
 
     if args.phase == 'test':
-        imageio.mimsave('video.mp4', [np.array(img) for i, img in enumerate(images)], fps=40)
+        imageio.mimsave('video.mp4', [np.array(img) for i, img in enumerate(images)], fps=30)
             
 if __name__ == "__main__":
     main()
